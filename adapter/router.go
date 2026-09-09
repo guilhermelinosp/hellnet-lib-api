@@ -10,6 +10,7 @@ import (
 
 var wildcardPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]+)}`)
 
+// RouteRegistrar is the minimal route-mounting surface shared by adapters.
 type RouteRegistrar interface {
 	Handle(string, string, api.Handler, ...api.Middleware)
 	Mount(string, string, http.Handler)
@@ -17,4 +18,10 @@ type RouteRegistrar interface {
 	ServeHTTP(http.ResponseWriter, *http.Request)
 }
 
-func TranslatePath(path string) string { if !strings.Contains(path, "{") { return path }; return wildcardPattern.ReplaceAllString(path, ":$1") }
+// TranslatePath converts {param} placeholders to the adapter's path syntax.
+func TranslatePath(path string) string {
+	if !strings.Contains(path, "{") {
+		return path
+	}
+	return wildcardPattern.ReplaceAllString(path, ":$1")
+}
