@@ -3,88 +3,19 @@ package adapter
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
 
-// RequestIDHeader is the canonical request ID header name.
-const RequestIDHeader = "X-Request-ID"
-
-// SecurityHeaders writes hardening response headers.
-func SecurityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
-		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
-		next.ServeHTTP(w, r)
-	})
-}
-
-// RequestID propagates a sanitized or generated request ID.
-func RequestID(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := SanitizeRequestID(r.Header.Get(RequestIDHeader))
-		if id == "" {
-			id = GenerateRequestID()
-		}
-		w.Header().Set(RequestIDHeader, id)
-		next.ServeHTTP(w, r)
-	})
-}
-
-// SanitizeRequestID validates and normalizes an incoming request ID header value.
-func SanitizeRequestID(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if len(raw) == 0 || len(raw) > 64 {
-		return ""
-	}
-	for _, r := range raw {
-		if r < '0' || r > '9' && r < 'a' || r > 'z' && r < 'A' || r > 'Z' && r != '-' && r != '_' && r != '.' {
-			return ""
-		}
-	}
-	return raw
-}
-
-// GenerateRequestID produces a random 128-bit hex request ID.
-func GenerateRequestID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "unavailable"
-	}
-	return hex.EncodeToString(b)
-}
-
-// CORS returns a middleware that allows the listed origins.
-func CORS(origins []string) func(http.Handler) http.Handler {
-	allowed := map[string]struct{}{}
-	wildcard := false
-	for _, origin := range origins {
-		if origin == "*" {
-			wildcard = true
-		}
-		allowed[origin] = struct{}{}
-	}
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			origin := r.Header.Get("Origin")
-			if origin != "" && (wildcard || HasOrigin(allowed, origin)) {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, "+RequestIDHeader)
-				w.Header().Set("Access-Control-Max-Age", "600")
-			}
-			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// HasOrigin reports whether origin is explicitly allowed.
-func HasOrigin(allowed map[string]struct{}, origin string) bool { _, ok := allowed[origin]; return ok }
+const requestIDHeader = "X-Request-ID"
+const requestIDContextKey = "adapter.requestID"
+func requestID() gin.HandlerFunc { return func(c *gin.Context) { id := strings.TrimSpace(c.GetHeader(requestIDHeader)); if id == "" { var b [16]byte; if _, err := rand.Read(b[:]); err == nil { id = hex.EncodeToString(b[:]) } else { id = "unavailable" } }; c.Set(requestIDContextKey, id); c.Writer.Header().Set(requestIDHeader, id); c.Next() } }
+func requestIDFrom(c *gin.Context) string { value, ok := c.Get(requestIDContextKey); if !ok { return "" }; id, _ := value.(string); return id }
+func securityHeaders() gin.HandlerFunc { return func(c *gin.Context) { for key, value := range map[string]string{"X-Content-Type-Options":"nosniff", "X-Frame-Options":"DENY", "Referrer-Policy":"strict-origin-when-cross-origin", "Content-Security-Policy":"default-src 'none'; frame-ancestors 'none'", "Cross-Origin-Resource-Policy":"same-origin"} { c.Writer.Header().Set(key, value) }; c.Next() } }
+func cors(origins []string) gin.HandlerFunc { allowed := map[string]struct{}{}; wildcard := false; for _, origin := range origins { allowed[origin] = struct{}{}; wildcard = wildcard || origin == "*" }; return func(c *gin.Context) { origin := c.GetHeader("Origin"); if origin != "" && (wildcard || hasOrigin(allowed, origin)) { c.Header("Access-Control-Allow-Origin", origin); c.Header("Vary", "Origin"); c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS"); c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, "+requestIDHeader); c.Header("Access-Control-Max-Age", "600") }; if c.Request.Method == http.MethodOptions && c.GetHeader("Access-Control-Request-Method") != "" { c.AbortWithStatus(http.StatusNoContent); return }; c.Next() } }
+func hasOrigin(allowed map[string]struct{}, origin string) bool { _, ok := allowed[origin]; return ok }
+func recovery(logger *slog.Logger) gin.HandlerFunc { return func(c *gin.Context) { defer func() { if rec := recover(); rec != nil { logger.ErrorContext(c.Request.Context(), "panic recovered", slog.Any("panic", rec)); writeError(c, logger, apierrors.Internal()) } }(); c.Next() } }
