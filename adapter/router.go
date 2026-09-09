@@ -1,0 +1,20 @@
+package adapter
+
+import (
+	"net/http"
+	"regexp"
+	"strings"
+
+	"github.com/guilhermelinosp/hellnet-lib-api/api"
+)
+
+var wildcardPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]+)}`)
+
+type RouteRegistrar interface {
+	Handle(string, string, api.Handler, ...api.Middleware)
+	Mount(string, string, http.Handler)
+	Group(string, ...api.Middleware) api.Router
+	ServeHTTP(http.ResponseWriter, *http.Request)
+}
+
+func TranslatePath(path string) string { if !strings.Contains(path, "{") { return path }; return wildcardPattern.ReplaceAllString(path, ":$1") }
