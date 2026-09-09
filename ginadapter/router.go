@@ -4,70 +4,98 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"regexp"
 	"slices"
-	"strings"
 
+	"github.com/gin-gonic/gin"
+	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 	api "github.com/guilhermelinosp/hellnet-lib-api/api"
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
-	"github.com/gin-gonic/gin"
 )
-
-var wildcardPattern = regexp.MustCompile(`\{([a-zA-Z0-9_]+)}`)
 
 const defaultBodyLimit = 1 << 20
 
-type Config struct {
-	Logger *slog.Logger
-	ReleaseMode bool
-	CORSAllowedOrigins []string
-	BodyLimit int64
-	GlobalMiddleware []api.Middleware
-}
+// Config holds the settings for a ginadapter Router.
+type Config = adapter.Config
 
+// Router is a gin-backed implementation of api.Router.
 type Router struct {
-	engine *gin.Engine
-	root *gin.RouterGroup
-	logger *slog.Logger
-	bodyLimit int64
+	engine          *gin.Engine
+	root            *gin.RouterGroup
+	logger          *slog.Logger
+	bodyLimit       int64
 	groupMiddleware []api.Middleware
 }
 
 var _ api.Router = (*Router)(nil)
 
+// New builds a gin-backed Router from cfg.
 func New(cfg Config) *Router {
-	if cfg.ReleaseMode { gin.SetMode(gin.ReleaseMode) } else if os.Getenv("GIN_MODE") == "" { gin.SetMode(gin.DebugMode) }
-	logger := cfg.Logger; if logger == nil { logger = slog.Default() }
-	limit := cfg.BodyLimit; if limit <= 0 { limit = defaultBodyLimit }
-	engine := gin.New(); engine.HandleMethodNotAllowed = true
-	engine.Use(requestID()); engine.Use(securityHeaders())
-	if len(cfg.CORSAllowedOrigins) > 0 { engine.Use(cors(cfg.CORSAllowedOrigins)) }
+	if cfg.ReleaseMode {
+		gin.SetMode(gin.ReleaseMode)
+	} else if os.Getenv("GIN_MODE") == "" {
+		gin.SetMode(gin.DebugMode)
+	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	limit := cfg.BodyLimit
+	if limit <= 0 {
+		limit = defaultBodyLimit
+	}
+	engine := gin.New()
+	engine.HandleMethodNotAllowed = true
+	engine.Use(requestID())
+	engine.Use(securityHeaders())
+	if len(cfg.CORSAllowedOrigins) > 0 {
+		engine.Use(cors(cfg.CORSAllowedOrigins))
+	}
 	engine.Use(recovery(logger))
-	engine.NoRoute(func(c *gin.Context) { writeError(c, logger, apierrors.New(http.StatusNotFound, "NOT_FOUND", "route not found")) })
-	engine.NoMethod(func(c *gin.Context) { writeError(c, logger, apierrors.New(http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed for this resource")) })
+	engine.NoRoute(func(c *gin.Context) {
+		writeError(c, logger, apierrors.New(http.StatusNotFound, "NOT_FOUND", "route not found"))
+	})
+	engine.NoMethod(func(c *gin.Context) {
+		writeError(c, logger, apierrors.New(http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed for this resource"))
+	})
 	return &Router{engine: engine, root: &engine.RouterGroup, logger: logger, bodyLimit: limit, groupMiddleware: append([]api.Middleware(nil), cfg.GlobalMiddleware...)}
 }
 
+// Handle registers an api.Handler at the given method and path.
 func (r *Router) Handle(method, path string, handler api.Handler, middlewares ...api.Middleware) {
-	r.root.Handle(method, translate(path), r.wrap(handler, middlewares))
+	r.root.Handle(method, adapter.TranslatePath(path), r.wrap(handler, middlewares))
 }
 
+// Mount registers a raw http.Handler at the given method and path.
 func (r *Router) Mount(method, path string, rawHandler http.Handler) {
-	r.root.Handle(method, translate(path), func(c *gin.Context) { c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, r.bodyLimit); rawHandler.ServeHTTP(c.Writer, c.Request) })
+	r.root.Handle(method, adapter.TranslatePath(path), func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, r.bodyLimit)
+		rawHandler.ServeHTTP(c.Writer, c.Request)
+	})
 }
 
+// Group returns a sub-router with the given prefix and middlewares.
 func (r *Router) Group(prefix string, middlewares ...api.Middleware) api.Router {
-	group := &Router{engine: r.engine, root: r.root.Group(translate(prefix)), logger: r.logger, bodyLimit: r.bodyLimit, groupMiddleware: append(append([]api.Middleware(nil), r.groupMiddleware...), middlewares...)}
+	group := &Router{engine: r.engine, root: r.root.Group(adapter.TranslatePath(prefix)), logger: r.logger, bodyLimit: r.bodyLimit, groupMiddleware: append(append([]api.Middleware(nil), r.groupMiddleware...), middlewares...)}
 	return group
 }
 
-func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) { req.Body = http.MaxBytesReader(w, req.Body, r.bodyLimit); r.engine.ServeHTTP(w, req) }
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	req.Body = http.MaxBytesReader(w, req.Body, r.bodyLimit)
+	r.engine.ServeHTTP(w, req)
+}
 
 func (r *Router) wrap(handler api.Handler, routeMiddlewares []api.Middleware) gin.HandlerFunc {
 	chain := append(append([]api.Middleware(nil), r.groupMiddleware...), routeMiddlewares...)
 	wrapped := handler
-	for _, middleware := range slices.Backward(chain) { wrapped = middleware(wrapped) }
-	return func(c *gin.Context) { resp, err := wrapped.Handle(c.Request.Context(), &Request{ctx: c}); if err != nil { writeError(c, r.logger, err); return }; writeResponse(c, resp) }
+	for _, middleware := range slices.Backward(chain) {
+		wrapped = middleware(wrapped)
+	}
+	return func(c *gin.Context) {
+		resp, err := wrapped.Handle(c.Request.Context(), &Request{ctx: c})
+		if err != nil {
+			writeError(c, r.logger, err)
+			return
+		}
+		writeResponse(c, resp)
+	}
 }
-
-func translate(path string) string { if !strings.Contains(path, "{") { return path }; return wildcardPattern.ReplaceAllString(path, ":$1") }
