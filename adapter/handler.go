@@ -11,14 +11,25 @@ import (
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
 
-// Handler adapts an api.HandlerFunc into an api.Handler.
-type Handler[T any] struct {
-	HandleFunc func(context.Context, api.Request) (api.Response, error)
+// JSONHandler adapts a typed handler that decodes the request body into TReq
+// and serializes TResp as JSON. Implementing api.Handler, it lets application
+// code write endpoint logic without touching Request/Response plumbing.
+type JSONHandler[TReq any, TResp any] struct {
+	HandleFunc func(context.Context, *TReq) (TResp, error)
 }
 
-// Handle implements api.Handler.
-func (h Handler[T]) Handle(ctx context.Context, request api.Request) (api.Response, error) {
-	return h.HandleFunc(ctx, request)
+// Handle implements api.Handler by binding the body to TReq, delegating to
+// HandleFunc, and wrapping the result as a JSON response.
+func (h JSONHandler[TReq, TResp]) Handle(ctx context.Context, request api.Request) (api.Response, error) {
+	var req TReq
+	if err := request.Bind(&req); err != nil {
+		return api.Response{}, err
+	}
+	resp, err := h.HandleFunc(ctx, &req)
+	if err != nil {
+		return api.Response{}, err
+	}
+	return api.JSON(http.StatusOK, resp), nil
 }
 
 // WriteResponse serializes a Response to the standard http.ResponseWriter.

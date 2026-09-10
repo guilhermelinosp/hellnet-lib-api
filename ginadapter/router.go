@@ -3,16 +3,14 @@ package ginadapter
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 	api "github.com/guilhermelinosp/hellnet-lib-api/api"
+	"github.com/guilhermelinosp/hellnet-lib-api/config"
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
-
-const defaultBodyLimit = 1 << 20
 
 // Config holds the settings for a ginadapter Router.
 type Config = adapter.Config
@@ -30,9 +28,9 @@ var _ api.Router = (*Router)(nil)
 
 // New builds a gin-backed Router from cfg.
 func New(cfg Config) *Router {
-	if cfg.ReleaseMode {
+	if cfg.ReleaseMode || cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
-	} else if os.Getenv("GIN_MODE") == "" {
+	} else {
 		gin.SetMode(gin.DebugMode)
 	}
 	logger := cfg.Logger
@@ -41,7 +39,7 @@ func New(cfg Config) *Router {
 	}
 	limit := cfg.BodyLimit
 	if limit <= 0 {
-		limit = defaultBodyLimit
+		limit = config.DefaultBodyLimit
 	}
 	engine := gin.New()
 	engine.HandleMethodNotAllowed = true

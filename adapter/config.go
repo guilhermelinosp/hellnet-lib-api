@@ -2,50 +2,31 @@ package adapter
 
 import (
 	"log/slog"
-	"os"
-	"strconv"
-	"strings"
 
 	"github.com/guilhermelinosp/hellnet-lib-api/api"
+	"github.com/guilhermelinosp/hellnet-lib-api/config"
 )
 
-const (
-	defaultBodyLimit int64 = 1 << 20
-	envReleaseMode         = "HELLNET_API_RELEASE_MODE"
-	envBodyLimit           = "HELLNET_API_BODY_LIMIT"
-	envCORSOrigins         = "HELLNET_API_CORS_ALLOWED_ORIGINS"
-)
-
-// Config holds tunable runtime settings for an adapter.
+// Config holds tunable runtime settings for an adapter. It embeds
+// config.Config — the single source of environment-driven values — and adds
+// the framework-specific wiring (logger and global middleware).
 type Config struct {
-	Logger             *slog.Logger
-	ReleaseMode        bool
-	CORSAllowedOrigins []string
-	BodyLimit          int64
-	GlobalMiddleware   []api.Middleware
+	config.Config
+	Logger           *slog.Logger
+	GlobalMiddleware []api.Middleware
 }
 
-// ConfigFromEnv builds a Config from environment variables
-// (HELLNET_API_RELEASE_MODE, HELLNET_API_BODY_LIMIT, HELLNET_API_CORS_ALLOWED_ORIGINS).
-func ConfigFromEnv(logger *slog.Logger) Config {
-	cfg := Config{Logger: logger, BodyLimit: defaultBodyLimit, CORSAllowedOrigins: splitEnv(os.Getenv(envCORSOrigins))}
-	if raw := strings.TrimSpace(os.Getenv(envReleaseMode)); raw != "" {
-		cfg.ReleaseMode, _ = strconv.ParseBool(raw)
+// ConfigFromEnv builds a Config from environment variables through
+// config.FromEnv (hellnet-lib-environments with the HELLNET_API_ prefix).
+func ConfigFromEnv(logger *slog.Logger) (*Config, error) {
+	cfg, err := config.FromEnv(config.Build{})
+	if err != nil {
+		return nil, err
 	}
-	if raw := strings.TrimSpace(os.Getenv(envBodyLimit)); raw != "" {
-		if n, err := strconv.ParseInt(raw, 10, 64); err == nil && n > 0 {
-			cfg.BodyLimit = n
-		}
-	}
-	return cfg
+	return &Config{Config: *cfg, Logger: logger}, nil
 }
 
-func splitEnv(raw string) []string {
-	var values []string
-	for _, item := range strings.Split(raw, ",") {
-		if item = strings.TrimSpace(item); item != "" {
-			values = append(values, item)
-		}
-	}
-	return values
+// FromConfig builds an adapter Config from an already-loaded config.Config.
+func FromConfig(cfg config.Config, logger *slog.Logger) *Config {
+	return &Config{Config: cfg, Logger: logger}
 }

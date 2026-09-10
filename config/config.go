@@ -1,12 +1,22 @@
+// Package config provides environment-driven runtime configuration for
+// Hellnet Go services, built on top of hellnet-lib-environments.
 package config
 
 import (
 	"fmt"
-	"os"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/guilhermelinosp/hellnet-lib-environments/environments"
 )
+
+// EnvPrefix is the primary environment variable prefix used by Config.
+const EnvPrefix = "HELLNET_API_"
+
+// envFallbackPrefix is the legacy prefix still honoured for compatibility.
+const envFallbackPrefix = "APP_"
 
 // Build holds build-time metadata injected at compile time.
 type Build struct {
@@ -27,48 +37,73 @@ type Config struct {
 	ReadHeaderTimeout  time.Duration
 	CORSAllowedOrigins []string
 	BodyLimit          int64
+	ReleaseMode        bool
+	LogLevel           slog.Level
+	LogFormat          string
+	TrustedProxies     []string
 	Build              Build
 }
 
 // Default values used when the corresponding environment variables are unset.
 const (
-	DefaultName             = "service"
-	DefaultEnv              = "Development"
-	DefaultPort             = "8080"
-	DefaultBodyLimit  int64 = 1 << 20
-	DefaultShutdown         = 10 * time.Second
-	DefaultReadHeader       = 10 * time.Second
-	DefaultRead             = 15 * time.Second
-	DefaultWrite            = 30 * time.Second
-	DefaultIdle             = 120 * time.Second
+	DefaultName                 = "service"
+	DefaultEnv                  = "Development"
+	DefaultPort                 = "8080"
+	DefaultBodyLimit      int64 = 1 << 20
+	DefaultShutdown             = 10 * time.Second
+	DefaultReadHeader           = 10 * time.Second
+	DefaultRead                 = 15 * time.Second
+	DefaultWrite                = 30 * time.Second
+	DefaultIdle                 = 120 * time.Second
+	DefaultLogFormat            = "text"
+	DefaultTrustedProxies       = ""
 )
 
-// FromEnv builds a Config from environment variables, applying defaults and validation.
+// FromEnv builds a Config from environment variables, applying defaults and
+// validation. It loads a local .env in development environments (a no-op in
+// production) and reads all values through hellnet-lib-environments, using
+// EnvPrefix as the primary prefix and the legacy "APP_" prefix as fallback.
 func FromEnv(build Build) (*Config, error) {
+	if err := environments.LoadDotEnv(); err != nil {
+		return nil, err
+	}
 	c := &Config{
-		Name:               value("APP_NAME", DefaultName),
-		Env:                strings.TrimSpace(value("APP_ENV", DefaultEnv)),
-		Port:               value("APP_PORT", DefaultPort),
+		Name:               environments.GetString(EnvPrefix, envFallbackPrefix, "NAME", DefaultName),
+		Env:                strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "ENV", DefaultEnv)),
+		Port:               environments.GetString(EnvPrefix, envFallbackPrefix, "PORT", DefaultPort),
 		ShutdownTimeout:    DefaultShutdown,
 		ReadTimeout:        DefaultRead,
 		WriteTimeout:       DefaultWrite,
 		IdleTimeout:        DefaultIdle,
 		ReadHeaderTimeout:  DefaultReadHeader,
-		CORSAllowedOrigins: list(value("APP_CORS_ALLOWED_ORIGINS", "")),
+		CORSAllowedOrigins: list(environments.GetString(EnvPrefix, envFallbackPrefix, "CORS_ALLOWED_ORIGINS", "")),
 		BodyLimit:          DefaultBodyLimit,
+		ReleaseMode:        environments.GetBool(EnvPrefix, envFallbackPrefix, "RELEASE_MODE", false),
+		LogLevel:           parseLevel(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_LEVEL", "")),
+		LogFormat:          parseFormat(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_FORMAT", DefaultLogFormat)),
+		TrustedProxies:     list(environments.GetString(EnvPrefix, envFallbackPrefix, "TRUSTED_PROXIES", DefaultTrustedProxies)),
 		Build:              build,
 	}
-	var err error
-	for key, target := range map[string]*time.Duration{
-		"APP_SHUTDOWN_TIMEOUT":    &c.ShutdownTimeout,
-		"APP_READ_TIMEOUT":        &c.ReadTimeout,
-		"APP_WRITE_TIMEOUT":       &c.WriteTimeout,
-		"APP_IDLE_TIMEOUT":        &c.IdleTimeout,
-		"APP_READ_HEADER_TIMEOUT": &c.ReadHeaderTimeout,
+	for _, timeout := range []struct {
+		suffix string
+		target *time.Duration
+	}{
+		{"SHUTDOWN_TIMEOUT", &c.ShutdownTimeout},
+		{"READ_TIMEOUT", &c.ReadTimeout},
+		{"WRITE_TIMEOUT", &c.WriteTimeout},
+		{"IDLE_TIMEOUT", &c.IdleTimeout},
+		{"READ_HEADER_TIMEOUT", &c.ReadHeaderTimeout},
 	} {
-		if *target, err = duration(key, *target); err != nil {
+		dur, err := environments.GetDurationE(EnvPrefix, envFallbackPrefix, timeout.suffix, *timeout.target)
+		if err != nil {
 			return nil, err
 		}
+		*timeout.target = dur
+	}
+	if n, err := environments.GetIntE(EnvPrefix, envFallbackPrefix, "BODY_LIMIT", int(DefaultBodyLimit)); err == nil && n > 0 {
+		c.BodyLimit = int64(n)
+	} else if err != nil {
+		return nil, err
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err
@@ -80,36 +115,47 @@ func FromEnv(build Build) (*Config, error) {
 func (c *Config) Validate() error {
 	port, err := strconv.Atoi(c.Port)
 	if err != nil || port < 1 || port > 65535 {
-		return fmt.Errorf("config: APP_PORT %q is invalid", c.Port)
+		return fmt.Errorf("config: %sPORT %q is invalid", EnvPrefix, c.Port)
 	}
 	if strings.TrimSpace(c.Name) == "" {
-		return fmt.Errorf("config: APP_NAME cannot be empty")
+		return fmt.Errorf("config: %sNAME cannot be empty", EnvPrefix)
 	}
 	if c.ShutdownTimeout <= 0 || c.ReadTimeout <= 0 || c.WriteTimeout <= 0 || c.IdleTimeout <= 0 || c.ReadHeaderTimeout <= 0 {
 		return fmt.Errorf("config: timeouts must be positive")
+	}
+	if c.BodyLimit <= 0 {
+		return fmt.Errorf("config: %sBODY_LIMIT must be positive", EnvPrefix)
 	}
 	return nil
 }
 
 // IsProduction reports whether the environment is set to production.
 func (c *Config) IsProduction() bool { return strings.EqualFold(c.Env, "Production") }
-func value(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+
+func parseLevel(raw string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "debug":
+		return slog.LevelDebug
+	case "info", "":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
-	return fallback
 }
-func duration(key string, fallback time.Duration) (time.Duration, error) {
-	raw := os.Getenv(key)
-	if raw == "" {
-		return fallback, nil
+
+func parseFormat(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "json":
+		return "json"
+	default:
+		return "text"
 	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("config: %s=%q is invalid: %w", key, raw, err)
-	}
-	return d, nil
 }
+
 func list(raw string) []string {
 	var out []string
 	for _, item := range strings.Split(raw, ",") {
