@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	api "github.com/guilhermelinosp/hellnet-lib-api/api"
+	"github.com/guilhermelinosp/hellnet-lib-api/config"
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
 
@@ -21,14 +22,15 @@ type Router struct {
 
 var _ api.Router = (*Router)(nil)
 
-// New builds a gin-backed Router from cfg.
-func New(cfg Config) *Router {
+// New builds a gin-backed Router from the application config and an
+// optional logger. The logger is created by the caller (typically
+// hellnet-lib-telemetry) and is never nil at runtime.
+func New(cfg *config.Config, logger *slog.Logger) *Router {
 	if cfg.ReleaseMode || cfg.IsProduction() {
 		gin.SetMode(gin.ReleaseMode)
 	} else {
 		gin.SetMode(gin.DebugMode)
 	}
-	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -50,7 +52,7 @@ func New(cfg Config) *Router {
 	engine.NoMethod(func(c *gin.Context) {
 		writeError(c, logger, apierrors.New(http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed for this resource"))
 	})
-	return &Router{engine: engine, root: &engine.RouterGroup, logger: logger, bodyLimit: limit, groupMiddleware: append([]api.Middleware(nil), cfg.GlobalMiddleware...)}
+	return &Router{engine: engine, root: &engine.RouterGroup, logger: logger, bodyLimit: limit}
 }
 
 // Handle registers an api.Handler at the given method and path.
