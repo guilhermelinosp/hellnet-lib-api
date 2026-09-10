@@ -1,4 +1,4 @@
-package ginadapter
+package adapter
 
 import (
 	"log/slog"
@@ -6,14 +6,9 @@ import (
 	"slices"
 
 	"github.com/gin-gonic/gin"
-	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 	api "github.com/guilhermelinosp/hellnet-lib-api/api"
-	"github.com/guilhermelinosp/hellnet-lib-api/config"
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
-
-// Config holds the settings for a ginadapter Router.
-type Config = adapter.Config
 
 // Router is a gin-backed implementation of api.Router.
 type Router struct {
@@ -39,7 +34,7 @@ func New(cfg Config) *Router {
 	}
 	limit := cfg.BodyLimit
 	if limit <= 0 {
-		limit = config.DefaultBodyLimit
+		limit = 1 << 20
 	}
 	engine := gin.New()
 	engine.HandleMethodNotAllowed = true
@@ -60,12 +55,12 @@ func New(cfg Config) *Router {
 
 // Handle registers an api.Handler at the given method and path.
 func (r *Router) Handle(method, path string, handler api.Handler, middlewares ...api.Middleware) {
-	r.root.Handle(method, adapter.TranslatePath(path), r.wrap(handler, middlewares))
+	r.root.Handle(method, TranslatePath(path), r.wrap(handler, middlewares))
 }
 
 // Mount registers a raw http.Handler at the given method and path.
 func (r *Router) Mount(method, path string, rawHandler http.Handler) {
-	r.root.Handle(method, adapter.TranslatePath(path), func(c *gin.Context) {
+	r.root.Handle(method, TranslatePath(path), func(c *gin.Context) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, r.bodyLimit)
 		rawHandler.ServeHTTP(c.Writer, c.Request)
 	})
@@ -73,7 +68,7 @@ func (r *Router) Mount(method, path string, rawHandler http.Handler) {
 
 // Group returns a sub-router with the given prefix and middlewares.
 func (r *Router) Group(prefix string, middlewares ...api.Middleware) api.Router {
-	group := &Router{engine: r.engine, root: r.root.Group(adapter.TranslatePath(prefix)), logger: r.logger, bodyLimit: r.bodyLimit, groupMiddleware: append(append([]api.Middleware(nil), r.groupMiddleware...), middlewares...)}
+	group := &Router{engine: r.engine, root: r.root.Group(TranslatePath(prefix)), logger: r.logger, bodyLimit: r.bodyLimit, groupMiddleware: append(append([]api.Middleware(nil), r.groupMiddleware...), middlewares...)}
 	return group
 }
 
