@@ -74,9 +74,10 @@ func MustNew() *Config {
 func FromEnv(build Build) (*Config, error) {
 	_ = environments.LoadDotEnv() // best-effort, same as telemetry/kafka
 
+	env := strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "ENVIRONMENT", "Development"))
 	c := &Config{
 		Name:               strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "SERVICE", "")),
-		Env:                strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "ENVIRONMENT", "Development")),
+		Env:                env,
 		Port:               environments.GetString(EnvPrefix, envFallbackPrefix, "PORT", "8080"),
 		ShutdownTimeout:    environments.GetDuration(EnvPrefix, envFallbackPrefix, "SHUTDOWN_TIMEOUT", 10*time.Second),
 		ReadTimeout:        environments.GetDuration(EnvPrefix, envFallbackPrefix, "READ_TIMEOUT", 15*time.Second),
@@ -86,7 +87,7 @@ func FromEnv(build Build) (*Config, error) {
 		CORSAllowedOrigins: list(environments.GetString(EnvPrefix, envFallbackPrefix, "CORS_ALLOWED_ORIGINS", "")),
 		BodyLimit:          int64(environments.GetInt(EnvPrefix, envFallbackPrefix, "BODY_LIMIT", 1<<20)),
 		ReleaseMode:        environments.GetBool(EnvPrefix, envFallbackPrefix, "RELEASE_MODE", false),
-		LogLevel:           parseLevel(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_LEVEL", "")),
+		LogLevel:           logLevelFor(env),
 		LogFormat:          parseFormat(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_FORMAT", "text")),
 		TrustedProxies:     list(environments.GetString(EnvPrefix, envFallbackPrefix, "TRUSTED_PROXIES", "")),
 		Build:              build,
@@ -121,19 +122,14 @@ func (c *Config) IsProduction() bool {
 	return strings.EqualFold(c.Env, "Production")
 }
 
-func parseLevel(raw string) slog.Level {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "debug":
+// logLevelFor derives the slog level from the environment: Debug in
+// development, Info everywhere else. The level is never read from an
+// environment variable — it follows HELLNET_ENVIRONMENT by design.
+func logLevelFor(env string) slog.Level {
+	if strings.EqualFold(strings.TrimSpace(env), "Development") {
 		return slog.LevelDebug
-	case "info", "":
-		return slog.LevelInfo
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
 	}
+	return slog.LevelInfo
 }
 
 func parseFormat(raw string) string {

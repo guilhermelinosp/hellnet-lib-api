@@ -45,12 +45,14 @@ development environments (no-op in production) via
 | `HELLNET_IDLE_TIMEOUT`           | duration | `120s`     | Server idle timeout.                 |
 | `HELLNET_READ_HEADER_TIMEOUT`    | duration | `10s`      | Server read-header timeout.          |
 | `HELLNET_RELEASE_MODE`           | bool     | `false`    | Force release mode (gin) regardless of `HELLNET_ENVIRONMENT`. |
-| `HELLNET_LOG_LEVEL`              | string   | `info`     | `debug`, `info`, `warn` or `error`.  |
 | `HELLNET_LOG_FORMAT`             | string   | `text`     | `json` or `text`.                    |
 | `HELLNET_TRUSTED_PROXIES`        | list     | (none)     | Comma-separated trusted proxy CIDRs/addresses. |
 
 Durations accept Go syntax (`15s`, `2m`) and .NET `HH:MM:SS` via
 `environments.ParseDuration`.
+
+The log level is **not** configurable via environment: it is derived from
+`HELLNET_ENVIRONMENT` — `debug` when Development, `info` otherwise.
 
 ## Quickstart (Gin)
 
