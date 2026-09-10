@@ -86,7 +86,7 @@ func FromEnv(build Build) (*Config, error) {
 		ReadHeaderTimeout:  environments.GetDuration(EnvPrefix, envFallbackPrefix, "READ_HEADER_TIMEOUT", 10*time.Second),
 		CORSAllowedOrigins: list(environments.GetString(EnvPrefix, envFallbackPrefix, "CORS_ALLOWED_ORIGINS", "")),
 		BodyLimit:          int64(environments.GetInt(EnvPrefix, envFallbackPrefix, "BODY_LIMIT", 1<<20)),
-		ReleaseMode:        environments.GetBool(EnvPrefix, envFallbackPrefix, "RELEASE_MODE", false),
+		ReleaseMode:        releaseModeFor(env),
 		LogLevel:           logLevelFor(env),
 		LogFormat:          parseFormat(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_FORMAT", "text")),
 		TrustedProxies:     list(environments.GetString(EnvPrefix, envFallbackPrefix, "TRUSTED_PROXIES", "")),
@@ -130,6 +130,13 @@ func logLevelFor(env string) slog.Level {
 		return slog.LevelDebug
 	}
 	return slog.LevelInfo
+}
+
+// releaseModeFor derives the Gin release mode from the environment: enabled
+// for anything that is not Development. Never read from an environment
+// variable — it follows HELLNET_ENVIRONMENT by design.
+func releaseModeFor(env string) bool {
+	return !strings.EqualFold(strings.TrimSpace(env), "Development")
 }
 
 func parseFormat(raw string) string {
