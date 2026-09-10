@@ -61,13 +61,13 @@ func (a *App) PlatformHandlers() api.PlatformHandlers {
 }
 
 // Register mounts the platform routes and the given dependency routes.
-func (a *App) Register(info api.ServiceInfo, deps api.Deps) {
-	api.RegisterPlatform(a.Router, info, deps)
+func (a *App) Register(deps api.Deps) {
+	api.RegisterPlatform(a.Router, deps)
 }
 
 // RegisterRoutes mounts only business routes under the versioned API prefix.
 func (a *App) RegisterRoutes(routes []api.Route) {
-	a.Register(api.ServiceInfo{}, api.Deps{Routes: routes})
+	a.Register(api.Deps{Routes: routes})
 }
 
 // Run serves HTTP until ctx is cancelled, draining connections gracefully.

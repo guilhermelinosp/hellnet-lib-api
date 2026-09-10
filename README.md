@@ -71,10 +71,7 @@ if err != nil {
 }
 
 router := adapter.New(*adapterCfg)
-api.RegisterPlatform(router, api.ServiceInfo{
-    Name: cfg.Name, Version: cfg.Build.Version,
-    Commit: cfg.Build.Commit, BuiltAt: cfg.Build.Date,
-}, api.Deps{
+api.RegisterPlatform(router, api.Deps{
     Platform: api.PlatformHandlers{
         Live:   http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
         Ready:  http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
