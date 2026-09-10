@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
 
 // RequestIDHeader is the canonical request ID header name.
@@ -44,11 +45,20 @@ func SanitizeRequestID(raw string) string {
 		return ""
 	}
 	for _, r := range raw {
-		if r < '0' || r > '9' && r < 'a' || r > 'z' && r < 'A' || r > 'Z' && r != '-' && r != '_' && r != '.' {
+		if !validIDChar(r) {
 			return ""
 		}
 	}
 	return raw
+}
+
+// validIDChar reports whether r is allowed in a request ID: alphanumeric,
+// hyphen, underscore or dot.
+func validIDChar(r rune) bool {
+	return r >= '0' && r <= '9' ||
+		r >= 'a' && r <= 'z' ||
+		r >= 'A' && r <= 'Z' ||
+		r == '-' || r == '_' || r == '.'
 }
 
 // GenerateRequestID produces a random 128-bit hex request ID.
@@ -130,13 +140,15 @@ func cors(origins []string) gin.HandlerFunc {
 	}
 }
 
-// recovery logs panics with a sanitized path and aborts with 500.
+// recovery logs panics with a sanitized path and writes a JSON error envelope
+// so client-facing error handling stays consistent across the app.
 func recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
 				logger.ErrorContext(c.Request.Context(), "panic recovered", slog.String("method", c.Request.Method), slog.String("path", sanitizeForLog(c.Request.URL.Path)), slog.Any("panic", err))
-				c.AbortWithStatus(http.StatusInternalServerError)
+				writeError(c, logger, apierrors.Internal())
+				c.Abort()
 			}
 		}()
 		c.Next()
