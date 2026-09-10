@@ -1,4 +1,4 @@
-package ginadapter
+package adapter
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 	api "github.com/guilhermelinosp/hellnet-lib-api/api"
 	apierrors "github.com/guilhermelinosp/hellnet-lib-api/errors"
 )
@@ -69,7 +68,7 @@ func writeError(c *gin.Context, logger *slog.Logger, err error) {
 	if cause := apierrors.Cause(mapped); cause != nil && !errors.Is(cause, context.Canceled) {
 		logger.ErrorContext(c.Request.Context(), "request failed", slog.String("method", c.Request.Method), slog.String("path", path), slog.Int("status", mapped.Status), slog.String("code", mapped.Code), slog.Any("error", cause))
 	}
-	payload, marshalErr := json.Marshal(adapter.ErrorEnvelope{Error: adapter.ErrorDetail{Code: mapped.Code, Message: mapped.Message}, RequestID: requestIDFrom(c)})
+	payload, marshalErr := json.Marshal(ErrorEnvelope{Error: ErrorDetail{Code: mapped.Code, Message: mapped.Message}, RequestID: requestIDFrom(c)})
 	if marshalErr != nil {
 		c.Data(http.StatusInternalServerError, "application/json; charset=utf-8", []byte(`{"error":{"code":"INTERNAL_ERROR","message":"internal server error"}}`))
 		return

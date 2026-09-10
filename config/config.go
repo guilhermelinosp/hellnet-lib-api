@@ -13,7 +13,7 @@ import (
 )
 
 // EnvPrefix is the primary environment variable prefix used by Config.
-const EnvPrefix = "HELLNET_API_"
+const EnvPrefix = "HELLNET_"
 
 // envFallbackPrefix is the legacy prefix still honoured for compatibility.
 const envFallbackPrefix = "APP_"
@@ -44,21 +44,6 @@ type Config struct {
 	Build              Build
 }
 
-// Default values used when the corresponding environment variables are unset.
-const (
-	DefaultName                 = "service"
-	DefaultEnv                  = "Development"
-	DefaultPort                 = "8080"
-	DefaultBodyLimit      int64 = 1 << 20
-	DefaultShutdown             = 10 * time.Second
-	DefaultReadHeader           = 10 * time.Second
-	DefaultRead                 = 15 * time.Second
-	DefaultWrite                = 30 * time.Second
-	DefaultIdle                 = 120 * time.Second
-	DefaultLogFormat            = "text"
-	DefaultTrustedProxies       = ""
-)
-
 // FromEnv builds a Config from environment variables, applying defaults and
 // validation. It loads a local .env in development environments (a no-op in
 // production) and reads all values through hellnet-lib-environments, using
@@ -68,20 +53,20 @@ func FromEnv(build Build) (*Config, error) {
 		return nil, err
 	}
 	c := &Config{
-		Name:               environments.GetString(EnvPrefix, envFallbackPrefix, "NAME", DefaultName),
-		Env:                strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "ENV", DefaultEnv)),
-		Port:               environments.GetString(EnvPrefix, envFallbackPrefix, "PORT", DefaultPort),
-		ShutdownTimeout:    DefaultShutdown,
-		ReadTimeout:        DefaultRead,
-		WriteTimeout:       DefaultWrite,
-		IdleTimeout:        DefaultIdle,
-		ReadHeaderTimeout:  DefaultReadHeader,
+		Name:               strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "SERVICE", "")),
+		Env:                strings.TrimSpace(environments.GetString(EnvPrefix, envFallbackPrefix, "ENV", "Development")),
+		Port:               environments.GetString(EnvPrefix, envFallbackPrefix, "PORT", "8080"),
+		ShutdownTimeout:    10 * time.Second,
+		ReadTimeout:        15 * time.Second,
+		WriteTimeout:       30 * time.Second,
+		IdleTimeout:        120 * time.Second,
+		ReadHeaderTimeout:  10 * time.Second,
 		CORSAllowedOrigins: list(environments.GetString(EnvPrefix, envFallbackPrefix, "CORS_ALLOWED_ORIGINS", "")),
-		BodyLimit:          DefaultBodyLimit,
+		BodyLimit:          int64(1 << 20),
 		ReleaseMode:        environments.GetBool(EnvPrefix, envFallbackPrefix, "RELEASE_MODE", false),
 		LogLevel:           parseLevel(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_LEVEL", "")),
-		LogFormat:          parseFormat(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_FORMAT", DefaultLogFormat)),
-		TrustedProxies:     list(environments.GetString(EnvPrefix, envFallbackPrefix, "TRUSTED_PROXIES", DefaultTrustedProxies)),
+		LogFormat:          parseFormat(environments.GetString(EnvPrefix, envFallbackPrefix, "LOG_FORMAT", "text")),
+		TrustedProxies:     list(environments.GetString(EnvPrefix, envFallbackPrefix, "TRUSTED_PROXIES", "")),
 		Build:              build,
 	}
 	for _, timeout := range []struct {
@@ -100,7 +85,7 @@ func FromEnv(build Build) (*Config, error) {
 		}
 		*timeout.target = dur
 	}
-	if n, err := environments.GetIntE(EnvPrefix, envFallbackPrefix, "BODY_LIMIT", int(DefaultBodyLimit)); err == nil && n > 0 {
+	if n, err := environments.GetIntE(EnvPrefix, envFallbackPrefix, "BODY_LIMIT", int(1<<20)); err == nil && n > 0 {
 		c.BodyLimit = int64(n)
 	} else if err != nil {
 		return nil, err

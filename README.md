@@ -20,36 +20,35 @@ environment-driven configuration built on
 | `api`         | Core contracts: `Handler`, `Request`, `Response`, `Route`, `Middleware`, `Router`, platform routes (`/live`, `/ready`, `/health`, `/api/v1`) and JSON helpers. Framework-neutral. |
 | `errors`      | HTTP-safe typed errors: `Error`, `New`, `Wrap`, `Map`, `Validation`, `Internal`. |
 | `config`      | Environment-driven configuration built on hellnet-lib-environments: `Config`, `Build`, `FromEnv`, `Validate`, `IsProduction`. |
-| `adapter`     | HTTP adapter helpers: `Config` (embeds `config.Config`), `ConfigFromEnv`, `FromConfig`, `JSONHandler[TReq, TResp]`, `WriteResponse`/`WriteError`, security/CORS/requestID middlewares, `TranslatePath`. |
-| `ginadapter`  | Gin-backed implementation of `api.Router`: `New(cfg)`, typed `Request`, middleware delegation to `adapter`. |
+| `adapter`     | HTTP adapter helpers + Gin-backed `api.Router`: `Config` (embeds `config.Config`), `ConfigFromEnv`, `FromConfig`, `JSONHandler[TReq, TResp]`, `New(cfg)`, typed `Request`, `WriteResponse`/`WriteError`, security/CORS/requestID middlewares, `TranslatePath`. |
 
 Framework adapters should be separate packages or modules and may depend on
 this core. The core remains stable and easy to embed.
 
 ## Environment variables
 
-All variables use the `HELLNET_API_` prefix, with the legacy `APP_` prefix
+All variables use the `HELLNET_` prefix, with the legacy `APP_` prefix
 honoured as a fallback. `FromEnv` also loads a local `.env` file in
 development environments (no-op in production) via
 `environments.LoadDotEnv`.
 
-| Variable                              | Type     | Default            | Description                          |
-|---------------------------------------|----------|--------------------|--------------------------------------|
-| `HELLNET_ENVIRONMENT`                 | string   | `""` (dev)         | Deployment environment; anything not `development/dev/local/test/testing` is treated as production. |
-| `HELLNET_API_NAME`                    | string   | `service`          | Service name shown in `/`.           |
-| `HELLNET_API_ENV`                     | string   | `Development`      | Logical environment label.           |
-| `HELLNET_API_PORT`                    | string   | `8080`             | Listen port (1–65535).               |
-| `HELLNET_API_BODY_LIMIT`              | int      | `1048576` (1 MiB)  | Max request body size in bytes.      |
-| `HELLNET_API_CORS_ALLOWED_ORIGINS`    | list     | (none)             | Comma-separated allowed CORS origins (`*` allows all). |
-| `HELLNET_API_SHUTDOWN_TIMEOUT`        | duration | `10s`              | Graceful shutdown window.            |
-| `HELLNET_API_READ_TIMEOUT`            | duration | `15s`              | Server read timeout.                 |
-| `HELLNET_API_WRITE_TIMEOUT`           | duration | `30s`              | Server write timeout.                |
-| `HELLNET_API_IDLE_TIMEOUT`            | duration | `120s`             | Server idle timeout.                 |
-| `HELLNET_API_READ_HEADER_TIMEOUT`     | duration | `10s`              | Server read-header timeout.          |
-| `HELLNET_API_RELEASE_MODE`            | bool     | `false`            | Force release mode (gin) regardless of `HELLNET_API_ENV`. |
-| `HELLNET_API_LOG_LEVEL`               | string   | `info`             | `debug`, `info`, `warn` or `error`.  |
-| `HELLNET_API_LOG_FORMAT`              | string   | `text`             | `json` or `text`.                    |
-| `HELLNET_API_TRUSTED_PROXIES`         | list     | (none)             | Comma-separated trusted proxy CIDRs/addresses. |
+| Variable                         | Type     | Default    | Description                          |
+|----------------------------------|----------|------------|--------------------------------------|
+| `HELLNET_ENVIRONMENT`            | string   | `""` (dev) | Deployment environment; anything not `development/dev/local/test/testing` is treated as production. |
+| `HELLNET_SERVICE`                | string   | **required** | Service name shown in `/`. `FromEnv` fails if empty. |
+| `HELLNET_ENV`                    | string   | `Development` | Logical environment label.           |
+| `HELLNET_PORT`                   | string   | `8080`     | Listen port (1–65535).               |
+| `HELLNET_BODY_LIMIT`             | int      | `1048576` (1 MiB) | Max request body size in bytes. |
+| `HELLNET_CORS_ALLOWED_ORIGINS`   | list     | (none)     | Comma-separated allowed CORS origins (`*` allows all). |
+| `HELLNET_SHUTDOWN_TIMEOUT`       | duration | `10s`      | Graceful shutdown window.            |
+| `HELLNET_READ_TIMEOUT`           | duration | `15s`      | Server read timeout.                 |
+| `HELLNET_WRITE_TIMEOUT`          | duration | `30s`      | Server write timeout.                |
+| `HELLNET_IDLE_TIMEOUT`           | duration | `120s`     | Server idle timeout.                 |
+| `HELLNET_READ_HEADER_TIMEOUT`    | duration | `10s`      | Server read-header timeout.          |
+| `HELLNET_RELEASE_MODE`           | bool     | `false`    | Force release mode (gin) regardless of `HELLNET_ENV`. |
+| `HELLNET_LOG_LEVEL`              | string   | `info`     | `debug`, `info`, `warn` or `error`.  |
+| `HELLNET_LOG_FORMAT`             | string   | `text`     | `json` or `text`.                    |
+| `HELLNET_TRUSTED_PROXIES`        | list     | (none)     | Comma-separated trusted proxy CIDRs/addresses. |
 
 Durations accept Go syntax (`15s`, `2m`) and .NET `HH:MM:SS` via
 `environments.ParseDuration`.
@@ -70,7 +69,7 @@ if err != nil {
     log.Fatalf("config: %v", err)
 }
 
-router := ginadapter.New(*adapterCfg)
+router := adapter.New(*adapterCfg)
 api.RegisterPlatform(router, api.ServiceInfo{
     Name: cfg.Name, Version: cfg.Build.Version,
     Commit: cfg.Build.Commit, BuiltAt: cfg.Build.Date,

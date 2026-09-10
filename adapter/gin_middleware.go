@@ -1,21 +1,20 @@
-package ginadapter
+package adapter
 
 import (
 	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 )
 
 // requestID generates or reuses a request ID, propagating it in the response header.
 func requestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := adapter.SanitizeRequestID(c.GetHeader(adapter.RequestIDHeader))
+		id := SanitizeRequestID(c.GetHeader(RequestIDHeader))
 		if id == "" {
-			id = adapter.GenerateRequestID()
+			id = GenerateRequestID()
 		}
-		c.Header(adapter.RequestIDHeader, id)
+		c.Header(RequestIDHeader, id)
 		c.Set("requestID", id)
 		c.Next()
 	}
@@ -34,13 +33,13 @@ func requestIDFrom(c *gin.Context) string {
 // securityHeaders delegates to the hardening middleware from the adapter package.
 func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		adapter.SecurityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { c.Next() })).ServeHTTP(c.Writer, c.Request)
+		SecurityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { c.Next() })).ServeHTTP(c.Writer, c.Request)
 	}
 }
 
 // cors delegates to the CORS middleware from the adapter package.
 func cors(origins []string) gin.HandlerFunc {
-	apply := adapter.CORS(origins)
+	apply := CORS(origins)
 	return func(c *gin.Context) {
 		apply(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { c.Next() })).ServeHTTP(c.Writer, c.Request)
 	}

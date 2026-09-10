@@ -17,7 +17,7 @@ type Config struct {
 }
 
 // ConfigFromEnv builds a Config from environment variables through
-// config.FromEnv (hellnet-lib-environments with the HELLNET_API_ prefix).
+// config.FromEnv (hellnet-lib-environments with the HELLNET_ prefix).
 func ConfigFromEnv(logger *slog.Logger) (*Config, error) {
 	cfg, err := config.FromEnv(config.Build{})
 	if err != nil {
