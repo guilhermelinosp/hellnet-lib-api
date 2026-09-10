@@ -8,7 +8,7 @@ import (
 	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
 )
 
-// requestID gera ou reutiliza um request ID, propagando-o no header de resposta.
+// requestID generates or reuses a request ID, propagating it in the response header.
 func requestID() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := adapter.SanitizeRequestID(c.GetHeader(adapter.RequestIDHeader))
@@ -21,7 +21,7 @@ func requestID() gin.HandlerFunc {
 	}
 }
 
-// requestIDFrom recupera o request ID previamente definido pelo middleware requestID.
+// requestIDFrom retrieves the request ID previously set by the requestID middleware.
 func requestIDFrom(c *gin.Context) string {
 	if id, ok := c.Get("requestID"); ok {
 		if s, ok := id.(string); ok {
@@ -31,14 +31,14 @@ func requestIDFrom(c *gin.Context) string {
 	return ""
 }
 
-// securityHeaders delega ao middleware hardening do pacote adapter.
+// securityHeaders delegates to the hardening middleware from the adapter package.
 func securityHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		adapter.SecurityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { c.Next() })).ServeHTTP(c.Writer, c.Request)
 	}
 }
 
-// cors delega ao middleware CORS do pacote adapter.
+// cors delegates to the CORS middleware from the adapter package.
 func cors(origins []string) gin.HandlerFunc {
 	apply := adapter.CORS(origins)
 	return func(c *gin.Context) {
@@ -46,6 +46,7 @@ func cors(origins []string) gin.HandlerFunc {
 	}
 }
 
+// recovery logs panics with a sanitized path and aborts with 500.
 func recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
