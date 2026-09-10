@@ -34,9 +34,8 @@ development environments (no-op in production) via
 
 | Variable                         | Type     | Default    | Description                          |
 |----------------------------------|----------|------------|--------------------------------------|
-| `HELLNET_ENVIRONMENT`            | string   | `""` (dev) | Deployment environment; anything not `development/dev/local/test/testing` is treated as production. |
+| `HELLNET_ENVIRONMENT`            | string   | `Development` | Logical environment label; `IsProduction()` is true when it equals `Production` (case-insensitive). |
 | `HELLNET_SERVICE`                | string   | **required** | Service name shown in `/`. `FromEnv` fails if empty. |
-| `HELLNET_ENV`                    | string   | `Development` | Logical environment label.           |
 | `HELLNET_PORT`                   | string   | `8080`     | Listen port (1–65535).               |
 | `HELLNET_BODY_LIMIT`             | int      | `1048576` (1 MiB) | Max request body size in bytes. |
 | `HELLNET_CORS_ALLOWED_ORIGINS`   | list     | (none)     | Comma-separated allowed CORS origins (`*` allows all). |
@@ -45,13 +44,15 @@ development environments (no-op in production) via
 | `HELLNET_WRITE_TIMEOUT`          | duration | `30s`      | Server write timeout.                |
 | `HELLNET_IDLE_TIMEOUT`           | duration | `120s`     | Server idle timeout.                 |
 | `HELLNET_READ_HEADER_TIMEOUT`    | duration | `10s`      | Server read-header timeout.          |
-| `HELLNET_RELEASE_MODE`           | bool     | `false`    | Force release mode (gin) regardless of `HELLNET_ENV`. |
-| `HELLNET_LOG_LEVEL`              | string   | `info`     | `debug`, `info`, `warn` or `error`.  |
+| `HELLNET_RELEASE_MODE`           | bool     | `false`    | Force release mode (gin) regardless of `HELLNET_ENVIRONMENT`. |
 | `HELLNET_LOG_FORMAT`             | string   | `text`     | `json` or `text`.                    |
 | `HELLNET_TRUSTED_PROXIES`        | list     | (none)     | Comma-separated trusted proxy CIDRs/addresses. |
 
 Durations accept Go syntax (`15s`, `2m`) and .NET `HH:MM:SS` via
 `environments.ParseDuration`.
+
+The log level is **not** configurable via environment: it is derived from
+`HELLNET_ENVIRONMENT` — `debug` when Development, `info` otherwise.
 
 ## Quickstart (Gin)
 
