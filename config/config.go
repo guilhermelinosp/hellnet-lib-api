@@ -65,6 +65,77 @@ func MustNew() *Config {
 	return cfg
 }
 
+// Values holds an explicit, non-environment configuration. Use WithValues to
+// build a Config programmatically (tests, CLI tools, embedded servers) when
+// environment variables are not the source of truth.
+type Values struct {
+	Name               string
+	Env                string
+	Port               string
+	ShutdownTimeout    time.Duration
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	IdleTimeout        time.Duration
+	ReadHeaderTimeout  time.Duration
+	CORSAllowedOrigins []string
+	TrustedProxies     []string
+	BodyLimit          int64
+	LogFormat          string
+	Build              Build
+}
+
+// WithValues builds a Config from explicit Values, applying the same inline
+// defaults and derived fields (release mode and log level follow Env) as
+// FromEnv, and validating the result exactly like the env-driven path.
+func WithValues(v Values) (*Config, error) {
+	env := strings.TrimSpace(v.Env)
+	if env == "" {
+		env = "Development"
+	}
+	c := &Config{
+		Name:               strings.TrimSpace(v.Name),
+		Env:                env,
+		Port:               defaultString(v.Port, "8080"),
+		ShutdownTimeout:    defaultDuration(v.ShutdownTimeout, 10*time.Second),
+		ReadTimeout:        defaultDuration(v.ReadTimeout, 15*time.Second),
+		WriteTimeout:       defaultDuration(v.WriteTimeout, 30*time.Second),
+		IdleTimeout:        defaultDuration(v.IdleTimeout, 120*time.Second),
+		ReadHeaderTimeout:  defaultDuration(v.ReadHeaderTimeout, 10*time.Second),
+		CORSAllowedOrigins: v.CORSAllowedOrigins,
+		BodyLimit:          defaultInt64(v.BodyLimit, 1<<20),
+		ReleaseMode:        releaseModeFor(env),
+		LogLevel:           logLevelFor(env),
+		LogFormat:          parseFormat(v.LogFormat),
+		TrustedProxies:     v.TrustedProxies,
+		Build:              v.Build,
+	}
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func defaultString(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
+}
+
+func defaultDuration(v, fallback time.Duration) time.Duration {
+	if v <= 0 {
+		return fallback
+	}
+	return v
+}
+
+func defaultInt64(v, fallback int64) int64 {
+	if v <= 0 {
+		return fallback
+	}
+	return v
+}
+
 // FromEnv builds a Config from environment variables, applying defaults and
 // validation. It loads a local .env in development environments (best-effort,
 // a no-op when missing or in production) and reads all values through

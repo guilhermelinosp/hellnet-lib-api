@@ -32,6 +32,8 @@ func LimitBody(w http.ResponseWriter, r *http.Request, limit int64) {
 // JSONHandler adapts a typed handler that decodes the request body into TReq
 // and serializes TResp as JSON. Implementing api.Handler, it lets application
 // code write endpoint logic without touching Request/Response plumbing.
+// An empty body is treated as the zero-value TReq (EOF is not an error), so
+// the same typed handler can serve endpoints that never send a body (GETs).
 type JSONHandler[TReq any, TResp any] struct {
 	HandleFunc func(context.Context, *TReq) (TResp, error)
 }
@@ -40,7 +42,7 @@ type JSONHandler[TReq any, TResp any] struct {
 // HandleFunc, and wrapping the result as a JSON response.
 func (h JSONHandler[TReq, TResp]) Handle(ctx context.Context, request api.Request) (api.Response, error) {
 	var req TReq
-	if err := request.Bind(&req); err != nil {
+	if err := request.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
 		return api.Response{}, err
 	}
 	resp, err := h.HandleFunc(ctx, &req)
@@ -107,7 +109,9 @@ func WriteResponse(w http.ResponseWriter, response api.Response) {
 	}
 }
 
-// WriteError maps err via apierrors and writes the error envelope.
+// WriteError maps err via apierrors and writes the error envelope. When the
+// RequestID middleware ran, the response header carries the request ID and it
+// is echoed back in the envelope for correlation.
 func WriteError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	mapped := apierrors.Map(err)
 	if mapped == nil {
@@ -121,7 +125,7 @@ func WriteError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(mapped.Status)
-	_ = json.NewEncoder(w).Encode(ErrorEnvelope{Error: ErrorDetail{Code: mapped.Code, Message: mapped.Message}})
+	_ = json.NewEncoder(w).Encode(ErrorEnvelope{Error: ErrorDetail{Code: mapped.Code, Message: mapped.Message}, RequestID: w.Header().Get(RequestIDHeader)})
 }
 
 func writeResponse(c *gin.Context, resp api.Response) {

@@ -66,6 +66,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Router {
 		engine.Use(cors(cfg.CORSAllowedOrigins))
 	}
 	engine.Use(recovery(logger))
+	applyTrustedProxies(engine, cfg.TrustedProxies)
 	engine.NoRoute(func(c *gin.Context) {
 		writeError(c, logger, apierrors.New(http.StatusNotFound, "NOT_FOUND", "route not found"))
 	})
@@ -97,6 +98,18 @@ func (r *Router) Group(prefix string, middlewares ...api.Middleware) api.Router 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	req.Body = http.MaxBytesReader(w, req.Body, r.bodyLimit)
 	r.engine.ServeHTTP(w, req)
+}
+
+// applyTrustedProxies restricts which proxies gin trusts when deriving the
+// client IP from forwarded headers. An empty list means no proxy is trusted:
+// gin then derives the client IP from the connection address, avoiding
+// X-Forwarded-For spoofing on services that are not behind a proxy.
+func applyTrustedProxies(engine *gin.Engine, trusted []string) {
+	if len(trusted) == 0 {
+		_ = engine.SetTrustedProxies(nil)
+		return
+	}
+	_ = engine.SetTrustedProxies(trusted)
 }
 
 func (r *Router) wrap(handler api.Handler, routeMiddlewares []api.Middleware) gin.HandlerFunc {

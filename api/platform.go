@@ -24,6 +24,9 @@ type ServiceInfo struct {
 	Version string
 	Commit  string
 	BuiltAt string
+	// Docs is an optional link to API documentation. When empty, the root
+	// endpoint omits the "docs" field.
+	Docs string
 }
 
 // Deps carries the dependency wiring for RegisterPlatform.
@@ -70,13 +73,16 @@ func RegisterPlatform(router Router, info ServiceInfo, deps Deps) {
 
 func serviceInfoHandler(info ServiceInfo) Handler {
 	return HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
-		return JSON(http.StatusOK, map[string]string{
+		body := map[string]string{
 			"service": info.Name,
 			"version": info.Version,
 			"commit":  info.Commit,
 			"builtAt": info.BuiltAt,
 			"go":      runtime.Version(),
-			"docs":    "openapi/openapi.yaml",
-		}), nil
+		}
+		if info.Docs != "" {
+			body["docs"] = info.Docs
+		}
+		return JSON(http.StatusOK, body), nil
 	})
 }

@@ -8,6 +8,7 @@ package platform
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/guilhermelinosp/hellnet-lib-api/adapter"
@@ -32,6 +33,9 @@ type App struct {
 // telemetry middleware and mounts the HTTP server with graceful shutdown.
 // A nil telemetry is not supported: callers must create it first.
 func New(tel *telemetry.Telemetry) (*App, error) {
+	if tel == nil {
+		return nil, errors.New("platform: telemetry is required")
+	}
 	cfg, err := config.New()
 	if err != nil {
 		return nil, err
