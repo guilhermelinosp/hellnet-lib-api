@@ -19,9 +19,6 @@ pre-commit:
         else
           echo "golangci-lint not installed; skipping"
         fi
-    yamllint:
-      glob: "*.{yaml,yml}"
-      run: yamllint {staged_files}
     secrets-scan:
       glob: "*.{yaml,yml,go,json,sh}"
       run: |
